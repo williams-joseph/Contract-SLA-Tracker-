@@ -1,0 +1,86 @@
+:root {
+  --bg: #fdf6f3;      /* light */
+  --surface: #ffffff;
+  --surface2: #f0f2f7;
+  --border: #e0d5d0;   /* border */
+  --accent: #ad4f2e;   /* primary */
+  --accent2: #008244;  /* green */
+  --danger: #8e1d36;   /* burgundy */
+  --warn: #f07e26;     /* orange */
+  --text: #1a1a1a;     /* text */
+  --muted: #7a6a65;    /* muted */
+  --gold: #e4ca00;
+  --teal: #5ea3b3;
+  --dark-teal: #335d68;
+  --navy: #004c71;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(173, 79, 46, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
