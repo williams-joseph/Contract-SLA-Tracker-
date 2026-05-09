@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import './App.css';
-import { contractsApi, vendorsApi } from './services/api';
+import { contractsApi, vendorsApi, FILE_BASE_URL } from './services/api';
 import AnalyticsTab from './Analytics';
 
 const StatusPill = ({ status }) => {
@@ -80,7 +80,7 @@ const ContractModal = ({ contract, onClose }) => {
                   </div>
                 </div>
                 <a 
-                  href={`http://localhost:5000${url}`} 
+                  href={`${FILE_BASE_URL}${url}`} 
                   target="_blank" 
                   rel="noreferrer"
                   className="btn btn-primary"

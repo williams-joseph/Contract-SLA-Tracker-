@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
-import { contractsApi, vendorsApi, usersApi, notificationsApi, auditApi, authApi, settingsApi } from './services/api';
+import { contractsApi, vendorsApi, usersApi, notificationsApi, auditApi, authApi, settingsApi, FILE_BASE_URL } from './services/api';
 
 const LoginScreen = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -296,7 +296,7 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
               return urls.map((url, i) => (
                 <div key={i} style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>📎 {urls.length > 1 ? `File ${i + 1}` : 'Existing PDF'}:</span>
-                  <a href={`http://localhost:5000${url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'underline' }}>View PDF</a>
+                  <a href={`${FILE_BASE_URL}${url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'underline' }}>View PDF</a>
                 </div>
               ));
             })()}
