@@ -132,7 +132,7 @@ main {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 18px;
   margin: 28px 0 24px;
   width: 100%;
@@ -159,25 +159,11 @@ main {
   border-radius: 10px 10px 0 0;
 }
 
-.stat-card.c-blue::before {
-  background: var(--accent);
-}
-
-.stat-card.c-green::before {
-  background: var(--accent2);
-}
-
-.stat-card.c-red::before {
-  background: var(--danger);
-}
-
-.stat-card.c-gray::before {
-  background: #9ca3af;
-}
-
-.stat-card.c-amber::before {
-  background: #d97706;
-}
+.stat-card.c-blue::before { background: var(--accent); }
+.stat-card.c-green::before { background: var(--accent2); }
+.stat-card.c-red::before { background: var(--danger); }
+.stat-card.c-yellow::before { background: #eab308; }
+.stat-card.c-black::before { background: #111; }
 
 .stat-label {
   font-size: 10px;
@@ -194,25 +180,11 @@ main {
   line-height: 1;
 }
 
-.c-blue .stat-value {
-  color: var(--accent);
-}
-
-.c-green .stat-value {
-  color: var(--accent2);
-}
-
-.c-red .stat-value {
-  color: var(--danger);
-}
-
-.c-gray .stat-value {
-  color: #9ca3af;
-}
-
-.c-amber .stat-value {
-  color: #d97706;
-}
+.c-blue .stat-value { color: var(--accent); }
+.c-green .stat-value { color: var(--accent2); }
+.c-red .stat-value { color: var(--danger); }
+.c-yellow .stat-value { color: #eab308; }
+.c-black .stat-value { color: #111; }
 
 .stat-sub {
   font-size: 11px;
@@ -317,7 +289,8 @@ main {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: calc(100vh - 280px);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   margin-bottom: 40px;
 }
@@ -337,6 +310,9 @@ main {
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
   font-weight: 400;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .contract-table td {

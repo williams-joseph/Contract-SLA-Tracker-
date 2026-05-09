@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import './App.css';
 import { contractsApi, vendorsApi } from './services/api';
+import AnalyticsTab from './Analytics';
 
 const StatusPill = ({ status }) => {
   const getStatusClass = (s) => {
@@ -61,32 +62,35 @@ const ContractModal = ({ contract, onClose }) => {
               {contract.days_remaining > 0 ? `⏱ ${contract.days_remaining} day(s) remaining` : `⚠️ Expired ${Math.abs(contract.days_remaining)} day(s) ago`}
             </div>
           )}
-          {contract.description && (
-            <div style={{ marginTop:'16px', padding:'12px 14px', background:'var(--bg)', borderRadius:'8px', border:'1px solid var(--border)' }}>
-              <div className="dl" style={{ marginBottom:'6px' }}>Transaction Description</div>
-              <div style={{ fontSize:'13px', lineHeight:'1.6', color:'var(--text)' }}>{contract.description}</div>
-            </div>
-          )}
-          {contract.pdf_url && (
-            <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(0,130,68,0.05)', borderRadius: '10px', border: '1px solid rgba(0,130,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '24px' }}>📄</span>
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent)' }}>Contract Document</div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Official PDF Attachment</div>
+          {contract.pdf_url && (() => {
+            let urls = [];
+            try { 
+              const p = JSON.parse(contract.pdf_url); 
+              urls = Array.isArray(p) ? p : [contract.pdf_url]; 
+            } catch { 
+              urls = [contract.pdf_url]; 
+            }
+            return urls.map((url, i) => (
+              <div key={i} style={{ marginTop: '16px', padding: '16px', background: 'rgba(0,130,68,0.05)', borderRadius: '10px', border: '1px solid rgba(0,130,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '24px' }}>📄</span>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent)' }}>Contract Document {urls.length > 1 ? i + 1 : ''}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Official PDF Attachment</div>
+                  </div>
                 </div>
+                <a 
+                  href={`http://localhost:5000${url}`} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="btn btn-primary"
+                  style={{ padding: '8px 16px', fontSize: '12px', textDecoration: 'none', borderRadius: '6px' }}
+                >
+                  Open PDF
+                </a>
               </div>
-              <a 
-                href={`http://localhost:5000${contract.pdf_url}`} 
-                target="_blank" 
-                rel="noreferrer"
-                className="btn btn-primary"
-                style={{ padding: '8px 16px', fontSize: '12px', textDecoration: 'none', borderRadius: '6px' }}
-              >
-                Open PDF
-              </a>
-            </div>
-          )}
+            ));
+          })()}
         </div>
       </div>
     </div>
@@ -104,8 +108,6 @@ function App() {
   const [selectedContract, setSelectedContract] = useState(null);
   const [vendors, setVendors] = useState([]);
   const [vendorSearch, setVendorSearch] = useState('');
-  const [historyYear, setHistoryYear] = useState('');
-  const [historySearch, setHistorySearch] = useState('');
   const [filterVendorCategory, setFilterVendorCategory] = useState('All');
 
   const handleGoHome = () => {
@@ -139,6 +141,7 @@ function App() {
   }, []);
 
   const filteredContracts = useMemo(() => contracts.filter((c) => {
+    if (new Date(c.end_date).getFullYear() < 2025) return false; // archived
     const statusLabel = (c.status === 'Active' || c.status === 'Expiring Soon') ? 'In Progress' : c.status;
     const matchFilter = filter === 'All' || statusLabel === filter || c.status === filter;
     const matchSearch = (c.vendor_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -147,41 +150,20 @@ function App() {
     return matchFilter && matchSearch;
   }).sort((a, b) => new Date(b.end_date) - new Date(a.end_date)), [contracts, filter, search]);
 
-  const historicalContracts = useMemo(() => {
-    return contracts
-      .filter((c) => c.status === 'Expired' || c.status === 'Completed')
-      .filter((c) => historyYear === 'All' || new Date(c.end_date).getFullYear() === Number(historyYear))
-      .filter((c) => 
-        (c.vendor_name || '').toLowerCase().includes(historySearch.toLowerCase()) ||
-        (c.title || '').toLowerCase().includes(historySearch.toLowerCase())
-      )
-      .sort((a, b) => new Date(b.end_date) - new Date(a.end_date));
-  }, [contracts, historyYear, historySearch]);
-
-  const historyYears = useMemo(() => {
-    const years = contracts
-      .filter(c => c.status === 'Expired' || c.status === 'Completed')
-      .map(c => new Date(c.end_date).getFullYear())
-      .filter(y => !isNaN(y));
-    return ['All', ...new Set(years)].sort((a, b) => a === 'All' ? -1 : b - a);
-  }, [contracts]);
-
-  // Auto-select the latest year when data first loads
-  useEffect(() => {
-    if (historyYears.length > 1 && historyYear === '') {
-      const latestYear = historyYears.find(y => y !== 'All');
-      if (latestYear) setHistoryYear(String(latestYear));
-    }
-  }, [historyYears]);
+  // Only vendors with contracts in 2025+
+  const activeVendorIds = useMemo(() => new Set(
+    contracts
+      .filter(c => new Date(c.end_date).getFullYear() >= 2025)
+      .map(c => c.vendor_id)
+  ), [contracts]);
 
   const filteredVendors = useMemo(() => vendors.filter(v => {
-    const matchCategory = filterVendorCategory === 'All' || 
-      (v.category === filterVendorCategory) || 
-      (filterVendorCategory === 'Uncategorized' && (!v.category || v.category === ''));
-    const matchSearch = v.name.toLowerCase().includes(vendorSearch.toLowerCase()) || 
+    if (!activeVendorIds.has(v.id)) return false;
+    const matchCategory = filterVendorCategory === 'All' || v.category === filterVendorCategory;
+    const matchSearch = v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
       (v.external_id || '').toLowerCase().includes(vendorSearch.toLowerCase());
     return matchCategory && matchSearch;
-  }), [vendors, vendorSearch, filterVendorCategory]);
+  }), [vendors, vendorSearch, filterVendorCategory, activeVendorIds]);
 
   const getContractLabel = (count) => {
     if (count === 0 || count === '0') return 'No contracts at the moment';
@@ -207,7 +189,7 @@ function App() {
           <div className="nav-tabs">
             <button className={`tab ${activeTab === 'contracts' ? 'active' : ''}`} onClick={() => setActiveTab('contracts')}>Active Tracking</button>
             <button className={`tab ${activeTab === 'vendors' ? 'active' : ''}`} onClick={() => setActiveTab('vendors')}>Vendors</button>
-            <button className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>Historical Data</button>
+            <button className={`tab ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>Analytics</button>
           </div>
         </div>
       </header>
@@ -220,97 +202,65 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && activeTab === 'contracts' && (
-          <div className="section active">
-            <div className="stats-grid">
-              <div className="stat-card c-blue"><div className="stat-label">Total Volume</div><div className="stat-value">{stats.total}</div><div className="stat-sub">All Records</div></div>
-              <div className="stat-card c-green"><div className="stat-label">In Progress</div><div className="stat-value">{stats.active}</div><div className="stat-sub">Ongoing services</div></div>
-              <div className="stat-card c-amber"><div className="stat-label">Expiring Soon</div><div className="stat-value">{stats.expiring_soon}</div><div className="stat-sub">Within 90 days</div></div>
-              <div className="stat-card c-red"><div className="stat-label">Expired</div><div className="stat-value">{stats.expired}</div><div className="stat-sub">Immediate action</div></div>
+        {!loading && !error && activeTab === 'contracts' && (() => {
+          const cy = new Date().getFullYear();
+          const yc = contracts.filter(c => new Date(c.end_date).getFullYear() >= 2025);
+          const yStats = {
+            total: yc.length,
+            active: yc.filter(c => ['Active','Expiring Soon'].includes(c.status)).length,
+            expiring: yc.filter(c => c.status === 'Expiring Soon').length,
+            expired: yc.filter(c => c.status === 'Expired').length,
+          };
+          return (
+            <div className="section active">
+              <div className="stats-grid">
+              <div className="stat-card c-black"><div className="stat-label">Total CCJ Contracts</div><div className="stat-value">{stats.total}</div><div className="stat-sub">All records</div></div>
+              <div className="stat-card c-blue" style={{ opacity: 0.9 }}><div className="stat-label">Total Contracts</div><div className="stat-value">{yStats.total}</div><div className="stat-sub">{cy} records</div></div>
+              <div className="stat-card c-green"><div className="stat-label">In Progress</div><div className="stat-value">{yStats.active}</div><div className="stat-sub">Running in {cy}</div></div>
+              <div className="stat-card c-yellow"><div className="stat-label">Expiring Soon</div><div className="stat-value">{yStats.expiring}</div><div className="stat-sub">Within 90 days</div></div>
+              <div className="stat-card c-red"><div className="stat-label">Expired</div><div className="stat-value">{yStats.expired}</div><div className="stat-sub">Need renewal in {cy}</div></div>
             </div>
-            
-            <div className="section-header"><div className="section-title">Contract Portfolio</div></div>
-            
-
-            <div className="filter-bar">
-              <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
-                <input type="text" className="search-input" placeholder="Search vendor or service..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingRight: search ? '28px' : undefined }} />
-                {search && <button onClick={() => setSearch('')} style={{ position:'absolute', right:'12px', background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'16px', lineHeight:1, padding:'2px' }}>✕</button>}
+              <div className="section-header"><div className="section-title">Contract Portfolio</div></div>
+              
+              <div className="filter-bar">
+                <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
+                  <input type="text" className="search-input" placeholder="Search vendor or service..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingRight: search ? '28px' : undefined }} />
+                  {search && <button onClick={() => setSearch('')} style={{ position:'absolute', right:'12px', background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'16px', lineHeight:1, padding:'2px' }}>✕</button>}
+                </div>
+                {['All', 'In Progress', 'Expired', 'Completed'].map((f) => (
+                  <button key={f} className={`filter-btn ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
+                ))}
               </div>
-              {['All', 'In Progress', 'Expired', 'Completed'].map((f) => (
-                <button key={f} className={`filter-btn ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
-              ))}
-            </div>
-            <div className="table-wrapper">
-              <table className="contract-table">
-                <thead><tr><th>Vendor ID</th><th> Vendor Name </th><th>Value</th><th>End Date</th><th>Status</th></tr></thead>
-                <tbody>
-                  {filteredContracts.map((c) => (
-                    <tr key={c.id} onClick={() => setSelectedContract(c)}>
-                      <td style={{ fontWeight:'700', color:'var(--accent)', fontSize:'13px' }}>{c.vendor_external_id || '—————'}</td>
-                      <td>
-                        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
-                          <span style={{ fontSize:'9px', fontWeight:'700', textTransform:'uppercase', color:c.category==='Purchase'?'#004c71':'#008244', background:c.category==='Purchase'?'rgba(0,76,113,0.1)':'rgba(0,130,68,0.1)', padding:'2px 5px', borderRadius:'3px' }}>
-                            {c.category === 'Purchase' ? '📦 Purchase' : '📄 Contract'}
-                          </span>
-                        </div>
-                        <div className="vendor-name">{c.vendor_name}</div>
-                        <div className="vendor-desc">{c.title}</div>
-                      </td>
-                      <td style={{ fontWeight:500 }}>{c.contract_value !== null && c.contract_value !== undefined ? `${c.currency || 'NGN'} ${Number(c.contract_value).toLocaleString()}` : <span style={{fontSize:'13px', fontWeight:'700', color:'var(--muted)'}}>Subject to Contract</span>}</td>
-                      <td>{new Date(c.end_date).toLocaleDateString('en-GB')}</td>
-                      <td><StatusPill status={c.status} /></td>
-                    </tr>
-                  ))}
-                  {filteredContracts.length === 0 && <tr><td colSpan="5" className="empty-state">No contracts found matching your criteria.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && activeTab === 'history' && (
-          <div className="section active">
-            <div className="section-header">
-              <div className="section-title">Historical Data</div>
-              <div style={{ fontSize:'13px', color:'var(--muted)', fontWeight:'500' }}>{historicalContracts.length} record{historicalContracts.length !== 1 ? 's' : ''}</div>
-            </div>
-            <div className="filter-bar">
-              <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
-                <input type="text" className="search-input" placeholder="Search vendor or transaction…" value={historySearch} onChange={e => setHistorySearch(e.target.value)} style={{ paddingRight: historySearch ? '28px' : undefined }} />
-                {historySearch && <button onClick={() => setHistorySearch('')} style={{ position:'absolute', right:'8px', background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'14px', lineHeight:1, padding:'2px' }}>✕</button>}
+              <div className="table-wrapper">
+                <table className="contract-table">
+                  <thead><tr><th>Contract ID</th><th> Vendor Name </th><th>End Date</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {filteredContracts.map((c) => (
+                      <tr key={c.id} onClick={() => setSelectedContract(c)}>
+                        <td style={{ fontWeight:'700', color:'var(--accent)', fontSize:'13px' }}>{c.vendor_external_id || '—————'}</td>
+                        <td>
+                          <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
+                            <span style={{ fontSize:'9px', fontWeight:'700', textTransform:'uppercase', color:c.category==='Purchase'?'#004c71':'#008244', background:c.category==='Purchase'?'rgba(0,76,113,0.1)':'rgba(0,130,68,0.1)', padding:'2px 5px', borderRadius:'3px' }}>
+                              {c.category === 'Purchase' ? '📦 Purchase' : '📄 Contract'}
+                            </span>
+                          </div>
+                          <div className="vendor-name">{c.vendor_name}</div>
+                          <div className="vendor-desc">{c.title}</div>
+                        </td>
+                        <td>{new Date(c.end_date).toLocaleDateString('en-GB')}</td>
+                        <td><StatusPill status={c.status} /></td>
+                      </tr>
+                    ))}
+                    {filteredContracts.length === 0 && <tr><td colSpan="4" className="empty-state">No contracts found matching your criteria.</td></tr>}
+                  </tbody>
+                </table>
               </div>
-              {historyYears.map(y => (
-                <button key={y} className={`filter-btn ${historyYear === String(y) ? 'active' : ''}`} onClick={() => setHistoryYear(String(y))}>{y}</button>
-              ))}
             </div>
-            <div className="table-wrapper">
-              <table className="contract-table">
-                <thead><tr><th>Vendor ID</th><th>Vendor Name</th><th>Value</th><th>End Date</th><th>Status</th></tr></thead>
-                <tbody>
-                  {historicalContracts.map((c) => (
-                    <tr key={c.id} onClick={() => setSelectedContract(c)}>
-                      <td style={{ fontWeight:'700', color:'var(--accent)', fontSize:'13px' }}>{c.vendor_external_id || '—————'}</td>
-                      <td>
-                        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
-                          <span style={{ fontSize:'9px', fontWeight:'700', textTransform:'uppercase', color:c.category==='Purchase'?'#004c71':'#008244', background:c.category==='Purchase'?'rgba(0,76,113,0.1)':'rgba(0,130,68,0.1)', padding:'2px 5px', borderRadius:'3px' }}>
-                            {c.category === 'Purchase' ? '📦 Purchase' : '📄 Contract'}
-                          </span>
-                        </div>
-                        <div className="vendor-name">{c.vendor_name}</div>
-                        <div className="vendor-desc">{c.title}</div>
-                      </td>
-                      <td style={{ fontWeight:500 }}>{c.contract_value !== null && c.contract_value !== undefined ? `${c.currency || 'NGN'} ${Number(c.contract_value).toLocaleString()}` : <span style={{fontSize:'13px', fontWeight:'700', color:'var(--muted)'}}>Subject to Contract</span>}</td>
-                      <td>{new Date(c.end_date).toLocaleDateString('en-GB')}</td>
-                      <td><StatusPill status={c.status} /></td>
-                    </tr>
-                  ))}
-                  {historicalContracts.length === 0 && <tr><td colSpan="5" className="empty-state">No historical records found.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+          );
+        })()}
+
+        {!loading && !error && <AnalyticsTab contracts={contracts} isActive={activeTab === 'analytics'} />}
+
         {!loading && !error && activeTab === 'vendors' && (
           <div className="section active">
             <div className="section-header"><div className="section-title">CCJ Vendors List</div></div>
@@ -320,10 +270,10 @@ function App() {
                 <input type="text" className="search-input" placeholder="Search by name or Vendor ID..." value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} style={{ paddingRight: vendorSearch ? '28px' : undefined }} />
                 {vendorSearch && <button onClick={() => setVendorSearch('')} style={{ position:'absolute', right:'12px', background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'16px', lineHeight:1, padding:'2px' }}>✕</button>}
               </div>
-              {['All', 'IT Contracts', 'General Services', 'Miscellaneous', 'Uncategorized'].map((cat) => (
-                <button 
-                  key={cat} 
-                  className={`filter-btn ${filterVendorCategory === cat ? 'active' : ''}`} 
+              {['All', 'IT Contracts', 'General Services', 'Miscellaneous'].map((cat) => (
+                <button
+                  key={cat}
+                  className={`filter-btn ${filterVendorCategory === cat ? 'active' : ''}`}
                   onClick={() => setFilterVendorCategory(cat)}
                 >
                   {cat}

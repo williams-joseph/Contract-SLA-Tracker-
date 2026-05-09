@@ -20,9 +20,9 @@ router.get('/stats', getContractStats);
 router.get('/:id', getContractById);
 
 // Admin/Officer actions
-router.post('/', authenticate, upload.single('pdf'), createContract);
+router.post('/', authenticate, upload.array('pdfs', 5), createContract);
 router.post('/:id/renew', authenticate, renewContract);
-router.put('/:id', authenticate, upload.single('pdf'), updateContract);
+router.put('/:id', authenticate, upload.array('pdfs', 5), updateContract);
 router.delete('/:id', authenticate, adminOnly, deleteContract); // only admin can delete
 
 module.exports = router;

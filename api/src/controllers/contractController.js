@@ -155,7 +155,9 @@ const createContract = async (req, res) => {
     return res.status(400).json({ error: 'Title and end date are required.' });
   }
 
-  const pdf_url = req.file ? `/uploads/${req.file.filename}` : null;
+  const pdf_url = req.files && req.files.length > 0
+    ? JSON.stringify(req.files.map(f => `/uploads/${f.filename}`))
+    : null;
 
   try {
     const autoStatus = status || computeStatus(end_date);
@@ -206,7 +208,22 @@ const updateContract = async (req, res) => {
 
     const autoStatus = status || (end_date ? computeStatus(end_date) : old.rows[0].status);
 
-    const pdf_url = req.file ? `/uploads/${req.file.filename}` : old.rows[0].pdf_url;
+    let existingFiles = [];
+    if (old.rows[0].pdf_url) {
+      try {
+        const parsed = JSON.parse(old.rows[0].pdf_url);
+        existingFiles = Array.isArray(parsed) ? parsed : [old.rows[0].pdf_url];
+      } catch {
+        existingFiles = [old.rows[0].pdf_url];
+      }
+    }
+
+    const newFiles = req.files && req.files.length > 0 
+      ? req.files.map(f => `/uploads/${f.filename}`) 
+      : [];
+
+    const combinedFiles = [...existingFiles, ...newFiles];
+    const pdf_url = combinedFiles.length > 0 ? JSON.stringify(combinedFiles) : null;
 
     const result = await db.query(
       `UPDATE contracts SET
@@ -258,19 +275,19 @@ const deleteContract = async (req, res) => {
       return res.status(404).json({ error: 'Contract not found.' });
     }
 
-    await db.query('DELETE FROM contracts WHERE id = $1', [id]);
-
-    // Audit log
+    // Write audit log BEFORE deleting so if audit fails the record is safe
     await db.query(
       `INSERT INTO audit_log (user_id, action, table_name, record_id, changes)
        VALUES ($1, 'DELETE', 'contracts', $2, $3)`,
-      [req.user.id, id, JSON.stringify(old.rows[0])]
+      [req.user.id, String(id), JSON.stringify(old.rows[0])]
     );
+
+    await db.query('DELETE FROM contracts WHERE id = $1', [id]);
 
     res.json({ message: 'Contract deleted successfully.' });
   } catch (err) {
-    console.error('deleteContract error:', err);
-    res.status(500).json({ error: 'Failed to delete contract.' });
+    console.error('deleteContract error:', err.message, err.stack);
+    res.status(500).json({ error: 'Failed to delete contract: ' + err.message });
   }
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
 import { contractsApi, vendorsApi, usersApi, notificationsApi, auditApi, authApi, settingsApi } from './services/api';
 
@@ -26,7 +26,7 @@ const LoginScreen = ({ onLogin }) => {
         <div className="login-logo">
           <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
-        <div className="login-title">SLA Tracker</div>
+        <div className="login-title">Contract SLA Tracker</div>
         <div className="login-subtitle">Administration Portal</div>
 
         {error && <div style={{ background: 'var(--danger)', color: 'white', padding: '12px', borderRadius: '8px', fontSize: '12px', marginBottom: '20px', textAlign: 'center' }}>{error}</div>}
@@ -61,9 +61,9 @@ const StatusPill = ({ status }) => {
 };
 
 const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => {
-  const empty = { vendor_id: '', vendor_name_input: '', title: '', description: '', category: 'Contract', contract_type: '', po_number: '', contract_value: '', currency: 'NGN', start_date: '', end_date: '', duration: '', service_quality: '', notes: '', parent_id: null, status: '', pdf_url: '' };
+  const empty = { vendor_id: '', vendor_name_input: '', title: '', description: '', category: 'Contract', po_number: '', contract_value: '', currency: 'NGN', start_date: '', end_date: '', duration: '', notes: '', parent_id: null, status: '', pdf_url: '' };
   const [form, setForm] = useState(empty);
-  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfFiles, setPdfFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const bodyRef = useRef(null);
@@ -84,14 +84,12 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
         title: mode === 'renew' ? `${editData.title} (Renewed)` : (editData.title || ''),
         description: editData.description || '',
         category: editData.category || 'Contract',
-        contract_type: editData.contract_type || '',
         po_number: editData.po_number || '',
         contract_value: editData.contract_value || '',
         currency: editData.currency || 'NGN',
         start_date: mode === 'renew' ? new Date().toISOString().slice(0, 10) : (editData.start_date ? editData.start_date.slice(0, 10) : ''),
         end_date: mode === 'renew' ? '' : (editData.end_date ? editData.end_date.slice(0, 10) : ''),
         duration: editData.duration || '',
-        service_quality: editData.service_quality || '',
         notes: editData.notes || '',
         parent_id: mode === 'renew' ? editData.id : null,
         status: mode === 'renew' ? '' : (editData.status || ''),
@@ -100,7 +98,7 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
     } else { 
       setForm({ ...empty, vendor_category: 'Miscellaneous' }); 
     }
-    setPdfFile(null);
+    setPdfFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setError('');
   }, [isOpen, mode, editData]);
@@ -150,9 +148,7 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
         }
       });
       formData.set('vendor_id', finalVendorId);
-      if (pdfFile) {
-        formData.append('pdf', pdfFile);
-      }
+      pdfFiles.forEach(f => formData.append('pdfs', f));
 
       if (mode === 'edit' && editData) await contractsApi.update(editData.id, formData);
       else if (mode === 'renew' && editData) await contractsApi.renew(editData.id, form); // Renew stays simple or also needs pdf? usually new term might need new pdf. boss said "include uploads when adding contracts".
@@ -201,29 +197,14 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
             <label className="form-label">Vendor Name</label>
             <input
               className="form-input"
-              list="vendors-list"
               placeholder="e.g. DUALNET NIGERIA LIMITED"
               value={form.vendor_name_input || ''}
               onChange={e => {
                 const val = e.target.value.toUpperCase();
-                const matched = vendors.find(v => v.name.toUpperCase() === val);
-                if (matched) {
-                  setForm(f => ({ 
-                    ...f, 
-                    vendor_name_input: val, 
-                    vendor_id: matched.id, 
-                    po_number: matched.external_id || f.po_number,
-                    vendor_category: matched.category || ''
-                  }));
-                } else {
-                  setForm(f => ({ ...f, vendor_name_input: val, vendor_id: '' }));
-                }
+                setForm(f => ({ ...f, vendor_name_input: val, vendor_id: '' }));
               }}
               disabled={mode === 'renew'}
             />
-            <datalist id="vendors-list">
-              {vendors.map(v => <option key={v.id} value={v.name} />)}
-            </datalist>
             {mode === 'renew' && <small style={{ color: 'var(--muted)', fontSize: '10px', marginTop: '4px', display: 'block' }}>Vendor is locked for renewal. Create a new contract for a different vendor.</small>}
           </div>
 
@@ -235,25 +216,32 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
               onChange={e => set('vendor_category', e.target.value)}
               disabled={!!form.vendor_id || mode === 'renew'}
             >
-              <option value="">None / Uncategorized</option>
+              <option value="">Purchases</option>
               <option value="IT Contracts">IT Contracts</option>
-              <option value="General Services">General Services</option>
+              <option value="General Services">Services</option>
               <option value="Miscellaneous">Miscellaneous</option>
             </select>
             {form.vendor_id && <small style={{ color: 'var(--muted)', fontSize: '10px', marginTop: '4px', display: 'block' }}>Category is linked to the existing vendor profile.</small>}
           </div>
           <div className="form-group">
-            <label className="form-label">{form.category === 'Purchase' ? 'Purchase Description' : 'Contract Description'}</label>
-            <input className="form-input" type="text" placeholder={form.category === 'Purchase' ? 'e.g. DSTV Subscription' : 'e.g. Cleaning Services'} value={form.title} onChange={e => set('title', e.target.value)} />
+            <label className="form-label">{form.category === 'Purchase' ? 'Purchase Description' : 'Contract/Service Description'}</label>
+            <textarea className="form-input" rows={3} placeholder={form.category === 'Purchase' ? 'e.g. DSTV Subscription – Premium Bouquet' : 'e.g. Annual Cleaning & Janitorial Services'} value={form.title} onChange={e => set('title', e.target.value)} style={{ resize: 'vertical', minHeight: '72px', lineHeight: '1.5' }} />
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">{form.category === 'Purchase' ? 'Vendor ID' : 'Vendor ID'}</label>
-              <input className="form-input" type="text" placeholder={form.category === 'Purchase' ? 'e.g. 202666' : 'e.g. 202666'} value={form.po_number || ''} onChange={e => set('po_number', e.target.value.toUpperCase())} />
+              <label className="form-label">Contract ID</label>
+              <input className="form-input" type="text" placeholder="e.g. 202666" value={form.po_number || ''} onChange={e => set('po_number', e.target.value.toUpperCase())} />
             </div>
             <div className="form-group">
               <label className="form-label">Duration</label>
-              <input className="form-input" type="text" placeholder="e.g. 1 Year" value={form.duration || ''} onChange={e => set('duration', e.target.value)} />
+              <select className="form-select" value={form.duration || ''} onChange={e => set('duration', e.target.value)}>
+                <option value="">— Select Duration —</option>
+                <option value="1 Year">1 Year</option>
+                <option value="2 Years">2 Years</option>
+                <option value="3 Years">3 Years</option>
+                <option value="4 Years">4 Years</option>
+                <option value="5 Years">5 Years</option>
+              </select>
             </div>
           </div>
           <div className="form-row">
@@ -270,10 +258,6 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
               </select>
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Transaction Description</label>
-            <textarea className="form-textarea" placeholder="Brief description…" value={form.description || ''} onChange={e => set('description', e.target.value)}></textarea>
-          </div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Start Date</label>
@@ -284,39 +268,38 @@ const ContractPanel = ({ isOpen, mode, editData, vendors, onClose, onSave }) => 
               <input className="form-input" type="date" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)} />
             </div>
           </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Contract Type</label>
-              <input className="form-input" type="text" placeholder="e.g. Supply, Service" value={form.contract_type} onChange={e => set('contract_type', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Service Quality</label>
-              <select className="form-select" value={form.service_quality} onChange={e => set('service_quality', e.target.value)}>
-                <option value="">— Select —</option>
-                <option>Excellent</option><option>Good</option><option>Satisfactory</option><option>Poor</option>
-              </select>
-            </div>
-          </div>
+
 
 
           <div className="form-group">
-            <label className="form-label">Contract PDF Attachment</label>
+            <label className="form-label">PDF Attachments</label>
             <div className="file-upload-container" style={{ border: '2px dashed #e5e7eb', padding: '16px', borderRadius: '10px', textAlign: 'center', background: '#f9fafb' }}>
               <input 
                 type="file" 
                 accept=".pdf" 
-                onChange={e => setPdfFile(e.target.files[0])} 
+                multiple
+                onChange={e => setPdfFiles(Array.from(e.target.files))} 
                 ref={fileInputRef}
                 style={{ fontSize: '12px' }}
               />
-              <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '8px' }}>Only PDF files allowed (Max 10MB)</div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '8px' }}>PDF files only · Max 10MB each · Multiple files allowed</div>
             </div>
-            {form.pdf_url && (
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>📎 Existing PDF:</span>
-                <a href={`http://localhost:5000${form.pdf_url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'underline' }}>View PDF</a>
+            {pdfFiles.length > 0 && (
+              <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px' }}>
+                📎 {pdfFiles.length} file(s) ready: {pdfFiles.map(f => f.name).join(', ')}
               </div>
             )}
+            {form.pdf_url && (() => {
+              let urls = [];
+              try { const p = JSON.parse(form.pdf_url); urls = Array.isArray(p) ? p : [form.pdf_url]; }
+              catch { urls = [form.pdf_url]; }
+              return urls.map((url, i) => (
+                <div key={i} style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--accent)' }}>📎 {urls.length > 1 ? `File ${i + 1}` : 'Existing PDF'}:</span>
+                  <a href={`http://localhost:5000${url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'underline' }}>View PDF</a>
+                </div>
+              ));
+            })()}
           </div>
         </div>
         <div className="fp-footer">
@@ -614,9 +597,30 @@ function App() {
     window.location.reload();
   };
 
+  const activeVendorIds = useMemo(() => {
+    const ids = new Set();
+    contracts.forEach(c => {
+      if (['In Progress', 'Active', 'Expiring Soon'].includes(c.status)) {
+        ids.add(c.vendor_id);
+      }
+    });
+    return ids;
+  }, [contracts]);
+
   if (!user) return <LoginScreen onLogin={(u) => setUser(u)} />;
 
   const filteredContracts = contracts.filter(c => {
+    if (new Date(c.end_date).getFullYear() < 2025) return false; // archived
+    const label = (c.status === 'Active' || c.status === 'Expiring Soon') ? 'In Progress' : c.status;
+    const matchStatus = filterStatus === 'All' || label === filterStatus || c.status === filterStatus;
+    const matchSearch = (c.vendor_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.title || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.po_number || '').toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchSearch;
+  }).sort((a, b) => new Date(b.end_date) - new Date(a.end_date));
+
+  const filteredArchives = contracts.filter(c => {
+    if (new Date(c.end_date).getFullYear() >= 2025) return false;
     const label = (c.status === 'Active' || c.status === 'Expiring Soon') ? 'In Progress' : c.status;
     const matchStatus = filterStatus === 'All' || label === filterStatus || c.status === filterStatus;
     const matchSearch = (c.vendor_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -646,18 +650,23 @@ function App() {
           <div className="sb-logo-icon" style={{ background: 'white', borderRadius: '50%', padding: '2px', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img src="/logo.png" alt="ECOWAS Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-          <div><div className="sb-logo-text">SLA Tracker</div><div className="sb-logo-sub">CCJ Admin</div></div>
+          <div><div className="sb-logo-text">Contract SLA Tracker</div><div className="sb-logo-sub">CCJ Admin</div></div>
         </div>
         <div className="sb-section-label">Management</div>
         <a className={`sb-item ${activeNav === 'contracts' ? 'active' : ''}`} onClick={() => setActiveNav('contracts')}>
           <span className="icon">📋</span> Contracts
           {stats.expiring_soon > 0 && <span className="sb-badge">{stats.expiring_soon}</span>}
         </a>
+        <a className={`sb-item ${activeNav === 'archives' ? 'active' : ''}`} onClick={() => setActiveNav('archives')}><span className="icon">🗂️</span> Archives</a>
         <a className={`sb-item ${activeNav === 'vendors' ? 'active' : ''}`} onClick={() => setActiveNav('vendors')}><span className="icon">🏢</span> Vendors</a>
         {user.role === 'admin' && <a className={`sb-item ${activeNav === 'users' ? 'active' : ''}`} onClick={() => setActiveNav('users')}><span className="icon">👤</span> Officers</a>}
-        <div className="sb-section-label">System</div>
-        <a className={`sb-item ${activeNav === 'notifications' ? 'active' : ''}`} onClick={() => setActiveNav('notifications')}><span className="icon">🔔</span> Notifications</a>
-        <a className={`sb-item ${activeNav === 'audit' ? 'active' : ''}`} onClick={() => setActiveNav('audit')}><span className="icon">📝</span> Audit Log</a>
+        {user.role === 'admin' && (
+          <>
+            <div className="sb-section-label">System</div>
+            <a className={`sb-item ${activeNav === 'notifications' ? 'active' : ''}`} onClick={() => setActiveNav('notifications')}><span className="icon">🔔</span> Notifications</a>
+            <a className={`sb-item ${activeNav === 'audit' ? 'active' : ''}`} onClick={() => setActiveNav('audit')}><span className="icon">📝</span> Audit Log</a>
+          </>
+        )}
         <div className="sb-bottom">
           <div className="sb-user">
             <div className="sb-avatar">{(displayName || 'U')[0].toUpperCase()}</div>
@@ -682,7 +691,7 @@ function App() {
       <div className="main-content">
         <div className="topbar">
           <div className="topbar-title">
-            {activeNav === 'contracts' ? 'Contract Management' : activeNav === 'vendors' ? 'Vendors' : activeNav === 'users' ? 'Officers' : activeNav === 'notifications' ? 'Notifications' : 'Audit Log'}
+            {activeNav === 'contracts' ? 'Contract Management' : activeNav === 'archives' ? 'Archives' : activeNav === 'vendors' ? 'Vendors' : activeNav === 'users' ? 'Officers' : activeNav === 'notifications' ? 'Notifications' : 'Audit Log'}
           </div>
           <div className="topbar-right">
             <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
@@ -694,15 +703,30 @@ function App() {
 
           {activeNav === 'contracts' && (
             <div className="section active">
-              <div className="stats-grid" style={{ marginTop: '14px' }}>
-                <div className="stat-card c-blue"><div className="stat-label">Total Contracts</div><div className="stat-value">{stats.total}</div><div className="stat-sub">All records</div></div>
-                <div className="stat-card c-green"><div className="stat-label">In Progress</div><div className="stat-value">{stats.active}</div><div className="stat-sub">Running</div></div>
-                <div className="stat-card c-warn"><div className="stat-label">Expiring Soon</div><div className="stat-value">{stats.expiring_soon || 0}</div><div className="stat-sub">Within 90 days</div></div>
-                <div className="stat-card c-red"><div className="stat-label">Expired</div><div className="stat-value">{stats.expired}</div><div className="stat-sub">Need renewal</div></div>
-              </div>
+              {(() => {
+                const cy = new Date().getFullYear();
+                const yc = contracts.filter(c => new Date(c.end_date).getFullYear() >= 2025);
+                const yStats = {
+                  total: yc.length,
+                  active: yc.filter(c => ['Active','Expiring Soon'].includes(c.status)).length,
+                  expiring: yc.filter(c => c.status === 'Expiring Soon').length,
+                  expired: yc.filter(c => c.status === 'Expired').length,
+                };
+                return (
+                  <>
+                    <div className="stats-grid" style={{ marginTop: '14px' }}>
+                      <div className="stat-card c-black"><div className="stat-label">Total CCJ Contracts</div><div className="stat-value">{stats.total}</div><div className="stat-sub">All records</div></div>
+                      <div className="stat-card c-blue" style={{ opacity: 0.9 }}><div className="stat-label">Total Contracts {cy}</div><div className="stat-value">{yStats.total}</div><div className="stat-sub">{cy} records</div></div>
+                      <div className="stat-card c-green"><div className="stat-label">In Progress</div><div className="stat-value">{yStats.active}</div><div className="stat-sub">Running in {cy}</div></div>
+                      <div className="stat-card c-yellow"><div className="stat-label">Expiring Soon</div><div className="stat-value">{yStats.expiring}</div><div className="stat-sub">Within 90 days</div></div>
+                      <div className="stat-card c-red"><div className="stat-label">Expired</div><div className="stat-value">{yStats.expired}</div><div className="stat-sub">Need renewal in {cy}</div></div>
+                    </div>
+                  </>
+                );
+              })()}
               <div className="filter-bar">
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input className="search-input" placeholder="Search vendor, title or PO…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: search ? '28px' : undefined }} />
+                  <input className="search-input" placeholder="Search vendor, title or Contract ID…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: search ? '28px' : undefined }} />
                   {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '14px', lineHeight: 1, padding: '2px' }}>✕</button>}
                 </div>
                 {['All', 'In Progress', 'Expired', 'Completed'].map(f => (
@@ -712,7 +736,7 @@ function App() {
               {loading ? <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading…</div> : (
                 <div className="table-wrapper">
                   <table className="contract-table">
-                    <thead><tr><th>PO/Contract ID</th><th>Vendor / Description</th><th>Value</th><th>End Date</th><th>Status</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Contract ID</th><th>Vendor / Description</th><th>Value</th><th>End Date</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody>
                       {filteredContracts.map(c => (
                         <tr key={c.id}>
@@ -746,13 +770,58 @@ function App() {
             </div>
           )}
 
+          {activeNav === 'archives' && (
+            <div className="section active">
+              <div style={{ background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: 'var(--muted)', marginTop: '14px', marginBottom: '4px' }}>
+                🗂️ Showing contracts and purchases with end dates before 2025.
+              </div>
+              <div className="filter-bar">
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input className="search-input" placeholder="Search archived records…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: search ? '28px' : undefined }} />
+                  {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '14px', lineHeight: 1, padding: '2px' }}>✕</button>}
+                </div>
+                {['All', 'In Progress', 'Expired', 'Completed'].map(f => (
+                  <button key={f} className={`filter-btn ${filterStatus === f ? 'active' : ''}`} onClick={() => setFilterStatus(f)}>{f}</button>
+                ))}
+              </div>
+              {loading ? <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading…</div> : (
+                <div className="table-wrapper">
+                  <table className="contract-table">
+                    <thead><tr><th>Contract ID</th><th>Vendor / Description</th><th>Value</th><th>End Date</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody>
+                      {filteredArchives.map(c => (
+                        <tr key={c.id} style={{ opacity: 0.8 }}>
+                          <td style={{ fontWeight: '700', color: 'var(--muted)', fontSize: '13px' }}>{c.vendor_external_id || '—————'}</td>
+                          <td>
+                            <div className="vendor-name">{c.vendor_name || '—'}</div>
+                            <div className="vendor-desc">{c.title}</div>
+                          </td>
+                          <td style={{ fontWeight: 500 }}>{c.contract_value !== null && c.contract_value !== undefined ? `${c.currency || 'NGN'} ${Number(c.contract_value).toLocaleString()}` : <strong style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: '700' }}>Subject to Contract</strong>}</td>
+                          <td>{new Date(c.end_date).toLocaleDateString('en-GB')}</td>
+                          <td><StatusPill status={c.status} /></td>
+                          <td>
+                            <div className="action-btns">
+                              <button className="act-btn primary" onClick={() => { setEditData(c); setPanelMode('edit'); setIsPanelOpen(true); }}>Edit</button>
+                              {user.role === 'admin' && <button className="act-btn danger" onClick={() => setConfirmDelete(c.id)}>Delete</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredArchives.length === 0 && <tr><td colSpan="6" className="empty-state">No archived records found.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeNav === 'vendors' && (
             <div className="section active">
               <div className="filter-bar" style={{ marginTop: '14px' }}>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input className="search-input" placeholder="Search vendor name..." value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
-                {['All', 'IT Contracts', 'General Services', 'Miscellaneous', 'Uncategorized'].map(f => (
+                {['All', 'IT Contracts', 'General Services', 'Miscellaneous'].map(f => (
                   <button key={f} className={`filter-btn ${filterVendorCategory === f ? 'active' : ''}`} onClick={() => setFilterVendorCategory(f)}>{f}</button>
                 ))}
               </div>
@@ -761,9 +830,9 @@ function App() {
                   <thead><tr><th>DB ID</th><th>Ref ID</th><th>Vendor Name</th><th>Category</th><th>Email</th><th>Contracts</th><th>Actions</th></tr></thead>
                   <tbody>
                     {vendors
+                      .filter(v => activeVendorIds.has(v.id))
                       .filter(v => {
                         if (filterVendorCategory === 'All') return true;
-                        if (filterVendorCategory === 'Uncategorized') return !v.category || v.category === '';
                         return v.category === filterVendorCategory;
                       })
                       .filter(v => v.name.toLowerCase().includes(search.toLowerCase()))
